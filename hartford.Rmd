@@ -1,0 +1,139 @@
+---
+title: "Study of Hartford Traffic Stops Data Oct 2013 - Sep 2016"
+author: "Adiya Abdilkhay"
+date: '04/10/2019'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+# the most essential package that includes ggplot2, readr, etc., that I would need in this pset
+library(stringr)
+# i will need to use a stringr function when trying to find a specific word in a string in one of the madlibs
+library(gt)
+# i will use this package to build a table in question 2
+library(fs)
+# i will need this pack to be able to delete unnecessary files 
+library(sf)
+# i will be reading in my data as a shapefile for my maps, and will need the sf package to use the functions in it
+library(ggthemes)
+# i will use the theme_map() function in the ggthemes package
+library(transformr)
+# i am using this package in question 5 where i have to transform some of my variables before making the datapoints dynamic
+
+# i use the first code chunk to load all the necessary packages. i also set echo=FALSE, # so that my code doesn't show in the output
+```
+
+
+```{r download data}
+hartford <- read_rds(url("https://stacks.stanford.edu/file/druid:tr137st9964/tr137st9964_ct_hartford_2019_02_25.rds"))
+# i am using this code chunk to download my dataset as an rds file and assign it to hartford, which i will be using throughout the pset
+```
+
+#Arrest Rate in Hartford, CT
+
+```{r question 2, warning=FALSE}
+# i set warning=FALSE to make sure that a warning message doesn't pop up in the output
+hartford %>% 
+  group_by(subject_sex, subject_race) %>% 
+  # i am arranging the dataset so that results with the same gender and race are placed together
+  summarise(n_arrests = sum(arrest_made), stops = n(), arrest_rate = n_arrests / stops) %>% 
+  # from here, i counted the sums of arrests made based on the groups i've created and assigned the number to n_arrests. then, created stops, which is simply the number of al rows. i divided n_arrests by stops and said that the outcome is the rate of arrests made, arrest_rate
+  select(arrest_rate, subject_race, subject_sex) %>% 
+  # i select the columns i want to include in my table to make sure i don't get all of the rest that i don't need 
+  spread(key = subject_sex, value = arrest_rate) %>% 
+  # i have to make sure that gender and race are columns and not rows to ensure a better-looking table, so inside sprad, i assign key to either one of these columns, and assign the value to be arrest_rate, which will make the values for the newly created columns show the rate of arrests made depending on race and gender.
+  mutate(subject_race = tools::toTitleCase(as.character(subject_race))) %>% 
+  # i want my columns to look professional, so i use the toTitleCase function in the tools package to turn all of my race values to have uppercase first letter
+gt() %>% 
+  # i pipe in the gt() function, which i will use to build the table
+  tab_header(
+    title = "Arrest Rate Depending on Race and Gender in Hartford, CT",
+    subtitle = "Data from Oct 2013 - Sep 2016	shows that both Hispanic men and women were arrested more often than any other group") %>%
+  # i give my table a title and a subtitle, since i want people to understand the context of my table
+  cols_label(subject_race = "Race",
+             male = "Male",
+             female = "Female") %>%
+  # i give my columns names that will look good on my table
+
+  tab_source_note("Source: Stanford Open Policing Project") %>% 
+  # it is important to list the source of your data
+  fmt_percent(columns = vars(male, female),
+              decimals = 2) 
+  # since i want to reformat my values from the undesirable small number to percentages, i am using the fmt_percent function and list the columns for which values i want the reformatting and also list the decimal places i want my values to have
+
+
+```
+
+#Traffic Stops in Hartford, CT
+
+```{r question 3, warning=FALSE}
+hartford %>% 
+  ggplot(aes(x = time)) + 
+  # i am only assigning an x-axis value here, since the number of stops is the overall number of rows, so i don't have to assign the y-axis value here.
+  geom_histogram(bins = 1440) +
+  # i want to show my data through a histogram, which i think would do a good job at showing interesting points in the data, since i can set the bins to be equal to 1440, the number of minutes per day, and show stops for each minute of the day
+xlab("Time") +
+  ylab("Number of Traffic Stops") +
+  # i am assigning my x and y-axis labels, so that it is easily understandable what i am showing on the graph
+  labs(title = "Distribution of Number of Traffic Stops on Each Minute in Hartford, CT",
+      subtitle = "Data from Oct 2013 - Sep 2016 shows increase in stops around lunch time",
+      caption = "Source: Stanford Open Policing Project")
+  # i am giving my graph a title, a subtitle which provides more details and a reasonable conclusion, and a caption that provides the source for my data
+```
+
+#Location of Arrests in Hartford, CT 
+
+```{r download data 2}
+
+download.file(url = "https://stacks.stanford.edu/file/druid:tr137st9964/tr137st9964_ct_hartford_shapefiles_2019_02_25.tgz", destfile = "shapes.tgz", quiet = TRUE)
+# i am now downloading a shapefile for my hartford data, which will allow me to create a map using the data. i start with using the download.file() function
+untar("shapes.tgz")
+# i have to make sure that i will be able to extract separate files from the shapefile, and the untar() function will let me do so
+shapes_data <- read_sf("ct_hartford_shapefiles/Hartford_Neighborhoods.shp")
+# i assigning my data to an easy variable name by using the read_sf() function
+file_delete(c("shapes.tgz", "ct_hartford_shapefiles/"))
+# now that i've extracted what i need, i can proceed to deleting the unnecessary files
+```
+
+
+```{r question 4, warning = FALSE}
+arrest_gender <- hartford %>%
+  # since i want to observe the distrubution of genders of people who were arrested, i am assigning my data to an appropriate name
+  drop_na(lat, lng) %>% 
+  # i want to make sure that all of my longtitude and latitude values are not empty
+  filter(arrest_made) %>%
+  # i only want to look at stops where an arrest has been made
+  filter(lng > -72.714 & lng < -72.691) %>% 
+  filter(lat > 41.7 & lat < 41.806) %>%  
+  # i found these values for longtitude and latitude through google maps, and have used them to remove the outliers that made my map look too small
+  mutate(subject_sex = tools::toTitleCase(as.character(subject_sex))) %>%
+  # since the genders are going to be listed in the legend, i want to make sure it looks professional by making the first lettes of the words uppercase, using the toTitleCase functio in the tools package, enclosing it all in a mutate()
+  select(subject_sex, lng, lat)
+  # i only want to observe the gender of arrested people, and i also select lng and lat since i use these values to actually plot the map
+arrest_locations <- st_as_sf(arrest_gender,
+                             coords = c("lng", "lat"),
+                             crs = 4326)
+  # i create a new variable called arrest_locations that reads the data off arrest_gender and turns rows into an sf object by using st_as_sf. it has its coordinates specified to longitude and latitude the data provides and the crs is the US
+ggplot(data = shapes_data) +
+  # i use ggplot for plotting my map and list the shapefile as my data, since i am now transitioning into the actual map plotting from data gathering
+  geom_sf() +
+  # geom_sf will create a visual map for my shapefile
+  geom_sf(data = arrest_locations, aes(color = subject_sex, alpha = 0.3)) +
+  # i am listing the data i am using for mapping, which is arrest_locations and specify that i want the color of datapoints to represent gender and the opacity of points to be 0.3 to ensure that the dots are still seen if they overlap
+  theme_map() +
+  # this theme from ggthemes will ensure that my map looks good
+  labs(title = "Location of Hartford Arrests Depending on Gender",
+       subtitle = "(Oct 2013 - Sep 2016) vast majority of arrested in all areas are males",
+       caption = "Source: Stanford Open Policing Project") +
+  # i am giving my map appropriate title, subtitle, and caption for listing the source
+  theme(legend.position="bottom") +
+  # i want my legend to be placed below the map, so i list its position as below
+  guides(alpha = FALSE) +
+  # i only want my legend to inform on what the colors of the dots mean and don't want it to include the transparency of the dots
+  scale_colour_discrete(name = "Gender")
+  # this will make sure that the column name on my legend looks professional instead of saying 'subject_sex
+
+```
+
